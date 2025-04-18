@@ -213,7 +213,7 @@ export function SlideEditor() {
           <button
             type="button"
             className="ml-auto px-2 py-1 text-red-600 border border-red-600 rounded text-sm hover:bg-red-600 hover:text-white transition"
-            onClick={handleDeleteAnnotation}
+            onClick={() => deleteAnnotation(selectedAnnotation.id)}
             aria-label="Delete selected annotation"
           >
             Delete Annotation
@@ -239,7 +239,7 @@ export function SlideEditor() {
             transformOrigin: 'top left',
           }}
           onMouseDown={(e) => { handlePanStart(e); handleEditorClick(e); }}
-          onMouseMove={(e) => { handlePan(e); handleMouseMove(e); }}
+          onMouseMove={(e) => { handlePan(e); }}
           onMouseUp={() => { handlePanEnd(); handleMouseUp(); }}
           onMouseLeave={() => { handlePanEnd(); handleMouseUp(); }}
         >
@@ -333,24 +333,125 @@ export function SlideEditor() {
           {/* All annotations use canvas coordinates (0...3000) */}
           {currentSlide.annotations.map((annotation) => {
             const isSelected = selectedAnnotation?.id === annotation.id;
-            return (
-              <div
-                key={annotation.id}
-                data-annotation
-                style={{
-                  position: 'absolute',
-                  left: annotation.x,
-                  top: annotation.y,
-                  width: annotation.width,
-                  height: annotation.height,
-                  backgroundColor: isSelected ? 'rgba(255, 255, 0, 0.5)' : 'transparent',
-                }}
-              >
-                {/* Render annotation content based on type */}
-                {annotation.type === 'text' && <span>{annotation.content}</span>}
-                {/* Add other annotation types here */}
-              </div>
-            );
+            const commonStyle = {
+              position: 'absolute' as const,
+              left: annotation.x,
+              top: annotation.y,
+              width: annotation.width,
+              height: annotation.height,
+              zIndex: isSelected ? 11 : 10,
+              boxSizing: 'border-box' as const,
+              border: isSelected ? '2px solid #ffd600' : '1px solid #888',
+              borderRadius: 7,
+              userSelect: 'none' as const,
+              cursor: isSelected ? 'move' : 'pointer',
+            };
+            if (annotation.type === 'highlight') {
+              return (
+                <div key={annotation.id} data-annotation style={{...commonStyle, background: annotation.color, opacity: 0.25}} onMouseDown={(e) => handleAnnotationDragStart(e, annotation)} />
+              );
+            }
+            if (annotation.type === 'text') {
+              return (
+                <div
+                  key={annotation.id}
+                  data-annotation
+                  style={{
+                    ...commonStyle,
+                    fontSize: 20,
+                    color: '#222',
+                    background: '#fff',
+                    padding: 6,
+                  }}
+                  onMouseDown={(e) => handleAnnotationDragStart(e, annotation)}
+                  onDoubleClick={() => {
+                    setSelectedAnnotation(annotation);
+                    setEditingTextId(annotation.id);
+                    setEditingTextContent(annotation.content || '');
+                  }}
+                >
+                  {(editingTextId === annotation.id)
+                    ? (
+                      <input
+                        style={{
+                          width: '100%',
+                          fontSize: 20,
+                          border: 'none',
+                          outline: 'none',
+                        }}
+                        autoFocus
+                        value={editingTextContent}
+                        onChange={e => setEditingTextContent(e.target.value)}
+                        onBlur={() => {
+                          updateAnnotation({ ...annotation, content: editingTextContent });
+                          setEditingTextId(null);
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            updateAnnotation({ ...annotation, content: editingTextContent });
+                            setEditingTextId(null);
+                          }
+                        }}
+                      />)
+                    : (
+                        <span>{annotation.content}</span>
+                      )}
+                  {isSelected && (
+                    <>
+                      {/* Resize handles */}
+                      <span
+                        style={{position: 'absolute', right: -8, bottom: -8, width: 16, height: 16, background: '#fff', border: '2px solid #ffd600', borderRadius: 8, cursor: 'nwse-resize', zIndex: 12 }}
+                        onMouseDown={e => handleResizeStart(e, 'se')}
+                      />
+                      <span
+                        style={{position: 'absolute', right: -8, top: '50%', width: 16, height: 16, background: '#fff', border: '2px solid #ffd600', borderRadius: 8, cursor: 'ew-resize', zIndex: 12, transform: 'translateY(-50%)'}}
+                        onMouseDown={e => handleResizeStart(e, 'e')}
+                      />
+                      <span
+                        style={{position: 'absolute', left: '50%', bottom: -8, width: 16, height: 16, background: '#fff', border: '2px solid #ffd600', borderRadius: 8, cursor: 'ns-resize', zIndex: 12, transform: 'translateX(-50%)'}}
+                        onMouseDown={e => handleResizeStart(e, 's')}
+                      />
+                    </>
+                  )}
+                </div>
+              );
+            }
+            if (annotation.type === 'arrow' && annotation.arrowPoints) {
+              // Arrow rendering must cover full canvas for endpoints
+              const { x1, y1, x2, y2 } = annotation.arrowPoints;
+              return (
+                <svg
+                  key={annotation.id}
+                  data-annotation
+                  style={{position: 'absolute', left: 0, top: 0, width: CANVAS_SIZE, height: CANVAS_SIZE, pointerEvents: 'none', zIndex: 12}}
+                >
+                  <defs>
+                    <marker id={`arrowhead-${annotation.id}`} markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill={annotation.color} /></marker>
+                  </defs>
+                  <line
+                    x1={x1} y1={y1}
+                    x2={x2} y2={y2}
+                    stroke={annotation.color}
+                    strokeWidth={isSelected ? 6 : 4}
+                    markerEnd={`url(#arrowhead-${annotation.id})`}
+                  />
+                  {isSelected && (
+                    <>
+                      {/* Endpoints draggable when selected */}
+                      <circle cx={x1} cy={y1} r={10} fill="#fff" stroke="#ffd600" strokeWidth={2}
+                        style={{cursor: 'pointer', pointerEvents: 'all'}}
+                        onMouseDown={e => { e.stopPropagation(); setSelectedAnnotation(annotation); setIsDragging(true); setResizeDirection('arrow-start'); }}
+                      />
+                      <circle cx={x2} cy={y2} r={10} fill="#fff" stroke="#ffd600" strokeWidth={2}
+                        style={{cursor: 'pointer', pointerEvents: 'all'}}
+                        onMouseDown={e => { e.stopPropagation(); setSelectedAnnotation(annotation); setIsDragging(true); setResizeDirection('arrow-end'); }}
+                      />
+                    </>
+                  )}
+                </svg>
+              );
+            }
+            return null;
           })}
         </div>
         {selectedTool && (
