@@ -112,6 +112,13 @@ export function SlideEditor() {
   };
   const handlePanEnd = () => setIsPanning(false);
 
+  // Restore missing handleMouseUp to safely end interaction state
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    setIsResizing(false);
+    setResizeDirection('');
+  };
+
   // Listen for key events to delete the selected annotation
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -233,7 +240,7 @@ export function SlideEditor() {
           }}
           onMouseDown={(e) => { handlePanStart(e); handleEditorClick(e); }}
           onMouseMove={(e) => { handlePan(e); handleMouseMove(e); }}
-          onMouseUp={(e) => { handlePanEnd(); handleMouseUp(); }}
+          onMouseUp={() => { handlePanEnd(); handleMouseUp(); }}
           onMouseLeave={() => { handlePanEnd(); handleMouseUp(); }}
         >
           {/* Overlay outside slide area */}
