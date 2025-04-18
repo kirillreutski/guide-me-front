@@ -140,6 +140,37 @@ export function SlideEditor() {
   const SLIDE_CENTER_X = CANVAS_SIZE / 2;
   const SLIDE_CENTER_Y = CANVAS_SIZE / 2;
 
+  // Given a mouse event, get the actual canvas X,Y under zoom/scroll
+  const getCanvasPointerCoords = (e: React.MouseEvent) => {
+    const viewport = viewportRef.current;
+    const canvas = editorRef.current;
+    if (!viewport || !canvas) return { x: 0, y: 0 };
+    const canvasRect = canvas.getBoundingClientRect();
+    // Get scroll offset in the parent overflow div
+    const scrollLeft = viewport.scrollLeft;
+    const scrollTop = viewport.scrollTop;
+    // Adjust client coordinates to canvas + zoom
+    return {
+      x: (e.clientX - canvasRect.left + scrollLeft) / zoom,
+      y: (e.clientY - canvasRect.top + scrollTop) / zoom,
+    };
+  };
+
+  const handleEditorClick = (e: React.MouseEvent) => {
+    // Exit annotation adding if panning
+    if (isPanning) return;
+    // Only handle clicks directly on the editor (not on annotations)
+    if (e.target === editorRef.current) {
+      if (selectedTool) {
+        const pos = getCanvasPointerCoords(e);
+        addAnnotation(selectedTool, pos.x, pos.y);
+        setSelectedTool(null);
+        window.dispatchEvent(new CustomEvent('annotation-added', { detail: { type: selectedTool } }));
+      }
+      setSelectedAnnotation(null);
+    }
+  };
+
   return (
     <>
       <div className="mb-2 flex gap-1 items-center">
@@ -174,8 +205,8 @@ export function SlideEditor() {
             height: CANVAS_SIZE,
             pointerEvents: 'auto',
             background: 'transparent',
-            // for pointer pan/zoom support
-            // no transform for centering (handled by scroll now)
+            transform: `scale(${zoom})`,
+            transformOrigin: 'top left',
           }}
           onMouseDown={(e) => { handlePanStart(e); handleEditorClick(e); }}
           onMouseMove={(e) => { handlePan(e); handleMouseMove(e); }}
