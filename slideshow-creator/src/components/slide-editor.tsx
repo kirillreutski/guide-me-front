@@ -23,6 +23,29 @@ export function SlideEditor() {
   const [selectedTool, setSelectedTool] = React.useState<AnnotationType | null>(null);
   const editorRef = React.useRef<HTMLDivElement>(null);
 
+  // Scroll viewport to center canvas on mount & zoom reset
+  const viewportRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    // Center the viewport on the canvas 1500,1500
+    const centerX = CANVAS_SIZE / 2 - vp.clientWidth / 2;
+    const centerY = CANVAS_SIZE / 2 - vp.clientHeight / 2;
+    vp.scrollLeft = centerX;
+    vp.scrollTop = centerY;
+  }, []);
+  // Also center on zoom reset
+  useEffect(() => {
+    if (zoom === 1 && pan.x === 0 && pan.y === 0) {
+      const vp = viewportRef.current;
+      if (!vp) return;
+      const centerX = CANVAS_SIZE / 2 - vp.clientWidth / 2;
+      const centerY = CANVAS_SIZE / 2 - vp.clientHeight / 2;
+      vp.scrollLeft = centerX;
+      vp.scrollTop = centerY;
+    }
+  }, [zoom, pan.x, pan.y]);
+
   // Pan & zoom states
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -137,28 +160,27 @@ export function SlideEditor() {
         )}
       </div>
       <div
-        className="relative w-full h-full max-w-6xl max-h-[80vh] bg-neutral-100 shadow-lg outline-none overflow-auto flex items-center justify-center"
-        style={{ minHeight: SLIDE_H * 0.6 }}
+        ref={viewportRef}
+        className="relative w-full h-full max-w-6xl max-h-[80vh] bg-neutral-100 shadow-lg outline-none overflow-auto"
+        style={{ minHeight: SLIDE_H * 0.6, minWidth: SLIDE_W * 0.7 }}
         tabIndex={0}
-        ref={editorRef}
-        onMouseDown={(e) => { handlePanStart(e); handleEditorClick(e); }}
-        onMouseMove={(e) => { handlePan(e); handleMouseMove(e); }}
-        onMouseUp={(e) => { handlePanEnd(); handleMouseUp(); }}
-        onMouseLeave={() => { handlePanEnd(); handleMouseUp(); }}
       >
+        {/* CANVAS ABSOLUTELY POSITIONED */}
         <div
-          className="absolute left-1/2 top-1/2"
+          ref={editorRef}
+          className="absolute top-0 left-0"
           style={{
             width: CANVAS_SIZE,
             height: CANVAS_SIZE,
-            transform: `translate(-50%, -50%) scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-            transformOrigin: 'top left',
-            background: 'transparent',
-            position: 'absolute',
-            overflow: 'visible',
             pointerEvents: 'auto',
-            boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
+            background: 'transparent',
+            // for pointer pan/zoom support
+            // no transform for centering (handled by scroll now)
           }}
+          onMouseDown={(e) => { handlePanStart(e); handleEditorClick(e); }}
+          onMouseMove={(e) => { handlePan(e); handleMouseMove(e); }}
+          onMouseUp={(e) => { handlePanEnd(); handleMouseUp(); }}
+          onMouseLeave={() => { handlePanEnd(); handleMouseUp(); }}
         >
           {/* Overlay outside slide area */}
           <svg
