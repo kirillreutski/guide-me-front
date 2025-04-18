@@ -42,13 +42,6 @@ export function SlideEditor() {
     const zoomHeight = (vp.clientHeight - SLIDE_MARGIN * 2) / SLIDE_H;
     const bestZoom = Math.min(zoomWidth, zoomHeight, 1); // don't auto over-zoom
     setZoom(bestZoom);
-    // After zoom is set, center scroll on slide area
-    setTimeout(() => {
-      const centerX = CANVAS_SIZE / 2 - vp.clientWidth / 2;
-      const centerY = CANVAS_SIZE / 2 - vp.clientHeight / 2;
-      vp.scrollLeft = centerX;
-      vp.scrollTop = centerY;
-    }, 20);
   }, []);
 
   // Optionally, you can make above run on window resize too for better UX:
@@ -60,28 +53,22 @@ export function SlideEditor() {
       const zoomHeight = (vp.clientHeight - SLIDE_MARGIN * 2) / SLIDE_H;
       const bestZoom = Math.min(zoomWidth, zoomHeight, 1);
       setZoom(bestZoom);
-      setTimeout(() => {
-        const centerX = CANVAS_SIZE / 2 - vp.clientWidth / 2;
-        const centerY = CANVAS_SIZE / 2 - vp.clientHeight / 2;
-        vp.scrollLeft = centerX;
-        vp.scrollTop = centerY;
-      }, 20);
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Also center on zoom reset
+  // Always recenter the viewport after zoom changes (wait for DOM)
   useEffect(() => {
-    if (zoom === 1 && pan.x === 0 && pan.y === 0) {
-      const vp = viewportRef.current;
-      if (!vp) return;
-      const centerX = CANVAS_SIZE / 2 - vp.clientWidth / 2;
-      const centerY = CANVAS_SIZE / 2 - vp.clientHeight / 2;
+    const vp = viewportRef.current;
+    if (!vp) return;
+    requestAnimationFrame(() => {
+      const centerX = CANVAS_SIZE / 2 * zoom - vp.clientWidth / 2;
+      const centerY = CANVAS_SIZE / 2 * zoom - vp.clientHeight / 2;
       vp.scrollLeft = centerX;
       vp.scrollTop = centerY;
-    }
-  }, [zoom, pan.x, pan.y]);
+    });
+  }, [zoom]);
 
   const clampZoom = (value: number) => Math.max(0.2, Math.min(3, value));
   const handleZoomIn = () => setZoom((z) => clampZoom(z + 0.1));
