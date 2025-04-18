@@ -14,7 +14,7 @@ type SlideshowContextType = {
   addSlide: () => void;
   deleteSlide: (slideId: string) => void;
   updateSlide: (slide: Slide) => void;
-  addAnnotation: (type: AnnotationType, x: number, y: number) => void;
+  addAnnotation: (type: AnnotationType, x: number, y: number, additionalDetails?: any) => void;
   updateAnnotation: (annotation: Annotation) => void;
   deleteAnnotation: (annotationId: string) => void;
   updateSlideBackground: (slideId: string, imageUrl: string | null, color: string) => void;
@@ -143,11 +143,14 @@ export const SlideshowProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     updateSlideshow(updatedSlideshow);
   };
 
-  const addAnnotation = (type: AnnotationType, x: number, y: number) => {
+  const addAnnotation = (type: AnnotationType, x: number, y: number, additionalDetails?: any) => {
     if (!currentSlideshow) return;
 
     const currentSlide = currentSlideshow.slides[currentSlideIndex];
     if (!currentSlide) return;
+
+    const annotationWidth = additionalDetails?.width || 200;
+    const annotationHeight = additionalDetails?.height || 100;
 
     const newAnnotation: Annotation = {
       id: uuidv4(),
@@ -155,17 +158,17 @@ export const SlideshowProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       content: type === 'text' ? 'Text annotation' : '',
       x,
       y,
-      width: type === 'text' ? 200 : 100,
-      height: type === 'text' ? 50 : 100,
+      width: annotationWidth,
+      height: annotationHeight,
       rotation: 0,
       color: '#000000',
       ...(type === 'text' && { fontSize: 16 }),
       ...(type === 'arrow' && {
         arrowPoints: {
-          x1: x,
-          y1: y,
-          x2: x + 100,
-          y2: y + 100
+          x1: additionalDetails.arrowPoints.x1,
+          y1: additionalDetails.arrowPoints.y1,
+          x2: additionalDetails.arrowPoints.x2,
+          y2: additionalDetails.arrowPoints.y2
         }
       }),
     };

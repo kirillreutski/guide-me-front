@@ -23,10 +23,16 @@ export function SlideEditor() {
   const [selectedTool, setSelectedTool] = React.useState<AnnotationType | null>(null);
   const editorRef = React.useRef<HTMLDivElement>(null);
 
+
+
   // Draft annotation (in-progress for drag-to-add)
   const [draftAnnotation, setDraftAnnotation] = useState<Annotation|null>(null);
   const [isDrafting, setIsDrafting] = useState(false);
 
+
+  useEffect(() => {
+    console.log('selectedAnnotation: ', selectedAnnotation);
+  }, [selectedAnnotation]);
   // Pan & zoom states
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -128,12 +134,12 @@ export function SlideEditor() {
     if (isDrafting && draftAnnotation && selectedTool) {
       if (selectedTool === 'highlight') {
         if (Math.abs(draftAnnotation.width) > 5 && Math.abs(draftAnnotation.height) > 5) {
-          addAnnotation('highlight', draftAnnotation.x, draftAnnotation.y, Math.abs(draftAnnotation.width), Math.abs(draftAnnotation.height));
+          addAnnotation('highlight', draftAnnotation.x, draftAnnotation.y, {width: draftAnnotation.width, height: draftAnnotation.height});//Math.abs(), Math.abs(draftAnnotation.height));
         }
       } else if (selectedTool === 'arrow' && draftAnnotation.arrowPoints) {
         const { x1, y1, x2, y2 } = draftAnnotation.arrowPoints;
         if (Math.abs(x2 - x1) > 10 || Math.abs(y2 - y1) > 10) {
-          addAnnotation('arrow', x1, y1, Math.abs(x2-x1), Math.abs(y2-y1), 0, undefined, { x1, y1, x2, y2 });
+          addAnnotation('arrow', x1, y1, {arrowPoints: { x1, y1, x2, y2 }});//Math.abs(x2-x1), Math.abs(y2-y1), 0, undefined, { x1, y1, x2, y2 });
         }
       }
       setDraftAnnotation(null);
@@ -190,22 +196,25 @@ export function SlideEditor() {
   // Given a mouse event, get the actual canvas X,Y under zoom/scroll
   const getCanvasPointerCoords = (e: React.MouseEvent) => {
     const viewport = viewportRef.current;
-    const canvas = editorRef.current;
-    if (!viewport || !canvas) return { x: 0, y: 0 };
-    const canvasRect = canvas.getBoundingClientRect();
-    // Get scroll offset in the parent overflow div
-    const scrollLeft = viewport.scrollLeft;
-    const scrollTop = viewport.scrollTop;
-    // Adjust client coordinates to canvas + zoom
+    if (!viewport) return { x: 0, y: 0 };
+    // 1. Get viewport's bounding box (relative to screen)
+    const rect = viewport.getBoundingClientRect();
+    // 2. Mouse position relative to the scrollable viewport
+    const offsetX = e.clientX - rect.left + viewport.scrollLeft;
+    const offsetY = e.clientY - rect.top + viewport.scrollTop;
+    // 3. Undo zoom scaling
     return {
-      x: (e.clientX - canvasRect.left + scrollLeft) / zoom,
-      y: (e.clientY - canvasRect.top + scrollTop) / zoom,
+      x: offsetX / zoom,
+      y: offsetY / zoom
     };
   };
 
   const handleEditorClick = (e: React.MouseEvent) => {
+    console.log('handleEditorClick: ', isPanning);
     if (isPanning) return;
     const target = e.target as HTMLElement;
+    console.log('handleEditorClick: ', isPanning, target.closest('[data-annotation]'), selectedTool, isDrafting);
+
     if (target.closest('[data-annotation]')) {
       const annotation = currentSlide.annotations.find(a => a.id === target.closest('[data-annotation]')?.getAttribute('data-id'));
       if (annotation) {
@@ -213,13 +222,17 @@ export function SlideEditor() {
       }
       return;
     }
+
     if (selectedTool && !isDrafting) {
       const pos = getCanvasPointerCoords(e);
       const minX = SLIDE_CENTER_X - SLIDE_W / 2;
       const minY = SLIDE_CENTER_Y - SLIDE_H / 2;
       const maxX = SLIDE_CENTER_X + SLIDE_W / 2;
       const maxY = SLIDE_CENTER_Y + SLIDE_H / 2;
-      if (!(pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY)) return;
+      if (!(pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY)) {
+        console.log('handleEditorClick: out of bounds', pos, minX, minY, maxX, maxY);
+        return;
+      }
       if (selectedTool === 'text') {
         addAnnotation('text', pos.x, pos.y);
         setSelectedTool(null);
@@ -227,7 +240,7 @@ export function SlideEditor() {
       } else if (selectedTool === 'highlight') {
         setIsDrafting(true);
         setDraftAnnotation({
-          id: 'draft', type: 'highlight', content: '', x: pos.x, y: pos.y, width: 1, height: 1, rotation: 0, color: '#ffd600',
+          id: 'draft', type: 'highlight', content: '', x: pos.x, y: pos.y, originX: pos.x, originY: pos.y, width: 1, height: 1, rotation: 0, color: '#ffd600',
         } as any);
       } else if (selectedTool === 'arrow') {
         setIsDrafting(true);
@@ -242,10 +255,20 @@ export function SlideEditor() {
   };
 
   const handleEditorDrag = (e: React.MouseEvent) => {
+    console.log('handleEditorDrag: ', isDrafting, draftAnnotation, selectedTool);
     if (isDrafting && draftAnnotation && selectedTool) {
       const pos = getCanvasPointerCoords(e);
       if (draftAnnotation.type === 'highlight') {
-        setDraftAnnotation({ ...draftAnnotation, width: pos.x - draftAnnotation.x, height: pos.y - draftAnnotation.y });
+        setDraftAnnotation({
+          ...draftAnnotation, x: draftAnnotation.originX, y: draftAnnotation.originY, width: pos.x, height: pos.y
+        })
+        // console.log('updating coords: ', pos.x, pos.y, draftAnnotation.x, draftAnnotation.y);
+        // const newX = pos.x < draftAnnotation.x ? pos.x : draftAnnotation.x;
+        // const newY = pos.y < draftAnnotation.y ? pos.y : draftAnnotation.y;
+        // const newW = Math.abs(pos.x - draftAnnotation.x);
+        // const newH = Math.abs(pos.y - draftAnnotation.y);
+        // setDraftAnnotation({ ...draftAnnotation, x: newX, y: newY, width: newW, height: newH });
+        // setDraftAnnotation({ ...draftAnnotation, width: pos.x - draftAnnotation.x, height: pos.y - draftAnnotation.y });
       } else if (draftAnnotation.type === 'arrow' && draftAnnotation.arrowPoints) {
         setDraftAnnotation({ ...draftAnnotation, arrowPoints: { ...draftAnnotation.arrowPoints, x2: pos.x, y2: pos.y } });
       }
@@ -424,6 +447,130 @@ export function SlideEditor() {
           {/* All annotations use canvas coordinates (0...3000) */}
           {currentSlide.annotations.map((annotation) => {
             const isSelected = selectedAnnotation?.id === annotation.id;
+            if (annotation.type === 'highlight') {
+
+              const x0 = annotation.x;
+              const y0 = annotation.y;
+              const x1 = annotation.width;
+              const y1 = annotation.height;
+              const left = Math.min(x0, x1);
+              const top = Math.min(y0, y1);
+              const width = Math.abs(x1 - x0);
+              const height = Math.abs(y1 - y0);
+
+              console.log('Draw position: ', left, top, width, height, x0, y0, x1, y1, annotation);
+
+              return <div
+                  key={annotation.id}
+                  data-annotation
+                  className="highlight-annotation"
+                  onClick={() => setSelectedAnnotation(annotation)}
+
+                  style={{
+                    position: 'absolute',
+                    left,
+                    top,
+                    width,
+                    height,
+                    background: annotation.color,
+                    opacity: 0.25,
+                    border: isSelected ? '2px solid #ffd600' : '1px solid #888',
+                    borderRadius: 7,
+                    zIndex: isSelected ? 11 : 10,
+                    pointerEvents: 'auto',
+                    boxSizing: 'border-box'
+                  }}
+              />
+              // return (
+              //     <div
+              //         key={annotation.id}
+              //         data-annotation
+              //         style={{
+              //           position: 'absolute',
+              //           left: annotation.x,
+              //           top: annotation.y,
+              //           width: annotation.width,
+              //           height: annotation.height,
+              //           background: annotation.color,
+              //           opacity: 0.25,
+              //           border: isSelected ? '2px solid #ffd600' : '1px solid #888',
+              //           borderRadius: 7,
+              //           zIndex: isSelected ? 11 : 10,
+              //           pointerEvents: 'auto',
+              //           boxSizing: 'border-box'
+              //         }}
+              //     />
+              // );
+            }
+            if (annotation.type === 'arrow' && annotation.arrowPoints) {
+              const { x1, y1, x2, y2 } = annotation.arrowPoints;
+              // Calculate a tight bounding box plus padding
+              const pad = 24;
+              const left = Math.min(x1, x2) - pad;
+              const top = Math.min(y1, y2) - pad;
+              const width = Math.abs(x2 - x1) + pad * 2;
+              const height = Math.abs(y2 - y1) + pad * 2;
+              // Arrow endpoints relative to this SVG
+              const relX1 = x1 - left;
+              const relY1 = y1 - top;
+              const relX2 = x2 - left;
+              const relY2 = y2 - top;
+
+              return (
+                  <svg
+                      key={annotation.id}
+                      data-annotation
+                      style={{
+                        position: "absolute",
+                        left,
+                        top,
+                        width,
+                        height,
+                        pointerEvents: "auto", // Enable events in child lines
+                        zIndex: 12,
+                      }}
+                  >
+                    <defs>
+                      <marker
+                          id={`arrowhead-${annotation.id}`}
+                          markerWidth="10"
+                          markerHeight="7"
+                          refX="9"
+                          refY="3.5"
+                          orient="auto"
+                      >
+                        <polygon points="0 0,10 3.5,0 7" fill={annotation.color} />
+                      </marker>
+                    </defs>
+                    {/* Transparent fat click line for hit area */}
+                    <line
+                        x1={relX1}
+                        y1={relY1}
+                        x2={relX2}
+                        y2={relY2}
+                        stroke="transparent"
+                        strokeWidth={24}
+                        pointerEvents="stroke"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setSelectedAnnotation(annotation);
+                        }}
+                    />
+                    {/* Visual line */}
+                    <line
+                        x1={relX1}
+                        y1={relY1}
+                        x2={relX2}
+                        y2={relY2}
+                        stroke={annotation.color}
+                        strokeWidth={isSelected ? 6 : 4}
+                        markerEnd={`url(#arrowhead-${annotation.id})`}
+                        pointerEvents="none"
+                    />
+                  </svg>
+              );
+            }
+
             return (
               <div
                 key={annotation.id}
@@ -445,19 +592,36 @@ export function SlideEditor() {
             );
           })}
           {draftAnnotation && isDrafting && (draftAnnotation.type === 'highlight') && (
-            <div
-              key={draftAnnotation.id}
-              style={{
-                position: 'absolute',
-                left: draftAnnotation.x,
-                top: draftAnnotation.y,
-                width: draftAnnotation.width,
-                height: draftAnnotation.height,
-                background: '#ffd600',
-                opacity: 0.18, zIndex: 100,
-                border: '2px dashed #ebc000', borderRadius: 8
-              }}
-            />
+              [''].map(_ => {
+
+                const x0 = draftAnnotation.originX;
+                const y0 = draftAnnotation.originY;
+                const x1 = draftAnnotation.width;
+                const y1 = draftAnnotation.height;
+                const left = Math.min(x0, x1);
+                const top = Math.min(y0, y1);
+                const width = Math.abs(x1 - x0);
+                const height = Math.abs(y1 - y0);
+                console.log('Rendering draft highlight: ', left, top, width, height);
+                if (left === 1 && top === 1) return <></>
+                return <div
+                    key={draftAnnotation.id}
+                    data-annotation
+                    style={{
+                      position: 'absolute',
+                      left,
+                      top,
+                      width,
+                      height,
+                      background: '#ffd600',
+                      opacity: 0.25,
+                      border: '2px dashed #ebc000', borderRadius: 8,
+                      borderRadius: 7,
+                      pointerEvents: 'auto',
+                      boxSizing: 'border-box'
+                    }}
+                />
+              })
           )}
           {draftAnnotation && isDrafting && draftAnnotation.type === 'arrow' && draftAnnotation.arrowPoints && (
             <svg
