@@ -184,7 +184,13 @@ export function SlideEditor() {
     if (isPanning) return;
     // Block clicks on annotation elements
     const target = e.target as HTMLElement;
-    if (target.closest('[data-annotation]')) return;
+    if (target.closest('[data-annotation]')) {
+      const annotation = currentSlide.annotations.find(a => a.id === target.closest('[data-annotation]')?.getAttribute('data-id'));
+      if (annotation) {
+        setSelectedAnnotation(annotation);
+      }
+      return;
+    }
     if (selectedTool) {
       const pos = getCanvasPointerCoords(e);
       // Only add if in slide area
@@ -197,8 +203,9 @@ export function SlideEditor() {
         setSelectedTool(null);
         window.dispatchEvent(new CustomEvent('annotation-added', { detail: { type: selectedTool } }));
       }
+    } else {
+      setSelectedAnnotation(null);
     }
-    setSelectedAnnotation(null);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -247,7 +254,10 @@ export function SlideEditor() {
           <button
             type="button"
             className="ml-auto px-2 py-1 text-red-600 border border-red-600 rounded text-sm hover:bg-red-600 hover:text-white transition"
-            onClick={handleDeleteAnnotation}
+            onClick={() => {
+              deleteAnnotation(selectedAnnotation.id);
+              setSelectedAnnotation(null);
+            }}
             aria-label="Delete selected annotation"
           >
             Delete Annotation
@@ -379,6 +389,7 @@ export function SlideEditor() {
                   height: annotation.height,
                   backgroundColor: isSelected ? 'rgba(255, 255, 0, 0.5)' : 'transparent',
                 }}
+                onClick={() => setSelectedAnnotation(annotation)}
               >
                 {/* Render annotation content based on type */}
                 {annotation.type === 'text' && <span>{annotation.content}</span>}
