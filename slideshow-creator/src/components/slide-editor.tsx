@@ -162,7 +162,167 @@ export function SlideEditor() {
             position: 'absolute',
           }}
         >
-          {renderAnnotations()}
+          {currentSlide.annotations.map((annotation) => {
+            const isSelected = selectedAnnotation?.id === annotation.id;
+            switch (annotation.type) {
+              case 'text':
+                return (
+                  <div
+                    key={annotation.id}
+                    className={`absolute ${isSelected && editingTextId !== annotation.id ? 'cursor-move' : 'cursor-text'} ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
+                    style={{
+                      left: `${annotation.x}px`,
+                      top: `${annotation.y}px`,
+                      width: `${annotation.width}px`,
+                      height: `${annotation.height}px`,
+                      transform: `rotate(${annotation.rotation}deg)`,
+                      color: annotation.color,
+                      fontSize: `${annotation.fontSize}px`,
+                      padding: `4px`,
+                      transformOrigin: 'top left',
+                      userSelect: isSelected ? 'text' : 'none',
+                      background: editingTextId === annotation.id ? '#fff' : 'none',
+                      zIndex: 20,
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedAnnotation(annotation);
+                      if (annotation.type === 'text') setEditingTextId(null);
+                    }}
+                    onDoubleClick={(e) => {
+                      if (isSelected) {
+                        setEditingTextId(annotation.id);
+                        setEditingTextContent(annotation.content);
+                      }
+                    }}
+                    onMouseDown={
+                      editingTextId === annotation.id
+                        ? undefined
+                        : (e) => {
+                            e.stopPropagation();
+                            setSelectedAnnotation(annotation);
+                            setIsDragging(true);
+                            // Assuming dragOffset required here
+                            setDragOffset({ x: 0, y: 0 });
+                          }
+                    }
+                  >
+                    {isSelected && editingTextId === annotation.id ? (
+                      <textarea
+                        autoFocus
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          fontSize: `${annotation.fontSize}px`,
+                          fontFamily: 'inherit',
+                          resize: 'none',
+                          color: annotation.color,
+                          background: '#fff',
+                          padding: `4px`,
+                          border: 'none',
+                          outline: 'none',
+                        }}
+                        value={editingTextContent}
+                        onChange={e => setEditingTextContent(e.target.value)}
+                        onBlur={() => {
+                          updateAnnotation({ ...annotation, content: editingTextContent });
+                          setEditingTextId(null);
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            updateAnnotation({ ...annotation, content: editingTextContent });
+                            setEditingTextId(null);
+                          } else if (e.key === 'Escape') {
+                            setEditingTextId(null);
+                          }
+                        }}
+                      />
+                    ) : (
+                      annotation.content
+                    )}
+                    {isSelected && (
+                      <div className="absolute -top-3 -left-3 -right-3 -bottom-3 border-2 border-blue-500 border-dashed pointer-events-none" />
+                    )}
+                  </div>
+                );
+              case 'highlight':
+                return (
+                  <div
+                    key={annotation.id}
+                    className={`absolute cursor-move ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
+                    style={{
+                      left: `${annotation.x}px`,
+                      top: `${annotation.y}px`,
+                      width: `${annotation.width}px`,
+                      height: `${annotation.height}px`,
+                      backgroundColor: annotation.color,
+                      opacity: 0.3,
+                      transform: `rotate(${annotation.rotation}deg)`,
+                      transformOrigin: 'top left',
+                      userSelect: 'none',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedAnnotation(annotation);
+                    }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      setSelectedAnnotation(annotation);
+                      setIsDragging(true);
+                      setDragOffset({ x: 0, y: 0 });
+                    }}
+                  >
+                    {isSelected && (
+                      <div className="absolute -top-3 -left-3 -right-3 -bottom-3 border-2 border-blue-500 border-dashed pointer-events-none" />
+                    )}
+                  </div>
+                );
+              case 'arrow': {
+                const arrowPoints = annotation.arrowPoints;
+                if (!arrowPoints) return null;
+                return (
+                  <div
+                    key={annotation.id}
+                    className="absolute top-0 left-0 w-full h-full"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedAnnotation(annotation);
+                    }}
+                  >
+                    <svg
+                      className="absolute top-0 left-0 w-full h-full"
+                      style={{ pointerEvents: 'none', overflow: 'visible' }}
+                    >
+                      <defs>
+                        <marker
+                          id={`arrowhead-${annotation.id}`}
+                          markerWidth="10"
+                          markerHeight="7"
+                          refX="9"
+                          refY="3.5"
+                          orient="auto"
+                        >
+                          <polygon points="0 0, 10 3.5, 0 7" fill={annotation.color} />
+                        </marker>
+                      </defs>
+                      <line
+                        x1={arrowPoints.x1}
+                        y1={arrowPoints.y1}
+                        x2={arrowPoints.x2}
+                        y2={arrowPoints.y2}
+                        stroke={annotation.color}
+                        strokeWidth={2}
+                        markerEnd={`url(#arrowhead-${annotation.id})`}
+                      />
+                    </svg>
+                  </div>
+                );
+              }
+              default:
+                return null;
+            }
+          })}
         </div>
         {selectedTool && (
           <div className="absolute top-4 left-4 bg-black bg-opacity-75 text-white px-3 py-1 rounded text-sm select-none pointer-events-none z-30">
