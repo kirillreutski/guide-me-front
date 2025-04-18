@@ -23,6 +23,13 @@ export function SlideEditor() {
   const [selectedTool, setSelectedTool] = React.useState<AnnotationType | null>(null);
   const editorRef = React.useRef<HTMLDivElement>(null);
 
+  // Pan & zoom states
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef({ x: 0, y: 0 });
+  const mouseStart = useRef({ x: 0, y: 0 });
+
   // Scroll viewport to center canvas on mount & zoom reset
   const viewportRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -45,13 +52,6 @@ export function SlideEditor() {
       vp.scrollTop = centerY;
     }
   }, [zoom, pan.x, pan.y]);
-
-  // Pan & zoom states
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const panStart = useRef({ x: 0, y: 0 });
-  const mouseStart = useRef({ x: 0, y: 0 });
 
   const clampZoom = (value: number) => Math.max(0.2, Math.min(3, value));
   const handleZoomIn = () => setZoom((z) => clampZoom(z + 0.1));
