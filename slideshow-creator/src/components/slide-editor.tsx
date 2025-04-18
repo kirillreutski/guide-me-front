@@ -32,15 +32,45 @@ export function SlideEditor() {
 
   // Scroll viewport to center canvas on mount & zoom reset
   const viewportRef = useRef<HTMLDivElement>(null);
+
+  const SLIDE_MARGIN = 48;
+
   useEffect(() => {
     const vp = viewportRef.current;
     if (!vp) return;
-    // Center the viewport on the canvas 1500,1500
-    const centerX = CANVAS_SIZE / 2 - vp.clientWidth / 2;
-    const centerY = CANVAS_SIZE / 2 - vp.clientHeight / 2;
-    vp.scrollLeft = centerX;
-    vp.scrollTop = centerY;
+    const zoomWidth = (vp.clientWidth - SLIDE_MARGIN * 2) / SLIDE_W;
+    const zoomHeight = (vp.clientHeight - SLIDE_MARGIN * 2) / SLIDE_H;
+    const bestZoom = Math.min(zoomWidth, zoomHeight, 1); // don't auto over-zoom
+    setZoom(bestZoom);
+    // After zoom is set, center scroll on slide area
+    setTimeout(() => {
+      const centerX = CANVAS_SIZE / 2 - vp.clientWidth / 2;
+      const centerY = CANVAS_SIZE / 2 - vp.clientHeight / 2;
+      vp.scrollLeft = centerX;
+      vp.scrollTop = centerY;
+    }, 20);
   }, []);
+
+  // Optionally, you can make above run on window resize too for better UX:
+  useEffect(() => {
+    const onResize = () => {
+      const vp = viewportRef.current;
+      if (!vp) return;
+      const zoomWidth = (vp.clientWidth - SLIDE_MARGIN * 2) / SLIDE_W;
+      const zoomHeight = (vp.clientHeight - SLIDE_MARGIN * 2) / SLIDE_H;
+      const bestZoom = Math.min(zoomWidth, zoomHeight, 1);
+      setZoom(bestZoom);
+      setTimeout(() => {
+        const centerX = CANVAS_SIZE / 2 - vp.clientWidth / 2;
+        const centerY = CANVAS_SIZE / 2 - vp.clientHeight / 2;
+        vp.scrollLeft = centerX;
+        vp.scrollTop = centerY;
+      }, 20);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   // Also center on zoom reset
   useEffect(() => {
     if (zoom === 1 && pan.x === 0 && pan.y === 0) {
@@ -157,18 +187,24 @@ export function SlideEditor() {
   };
 
   const handleEditorClick = (e: React.MouseEvent) => {
-    // Exit annotation adding if panning
     if (isPanning) return;
-    // Only handle clicks directly on the editor (not on annotations)
-    if (e.target === editorRef.current) {
-      if (selectedTool) {
-        const pos = getCanvasPointerCoords(e);
+    // Block clicks on annotation elements
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-annotation]')) return;
+    if (selectedTool) {
+      const pos = getCanvasPointerCoords(e);
+      // Only add if in slide area
+      const minX = SLIDE_CENTER_X - SLIDE_W / 2;
+      const minY = SLIDE_CENTER_Y - SLIDE_H / 2;
+      const maxX = SLIDE_CENTER_X + SLIDE_W / 2;
+      const maxY = SLIDE_CENTER_Y + SLIDE_H / 2;
+      if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
         addAnnotation(selectedTool, pos.x, pos.y);
         setSelectedTool(null);
         window.dispatchEvent(new CustomEvent('annotation-added', { detail: { type: selectedTool } }));
       }
-      setSelectedAnnotation(null);
     }
+    setSelectedAnnotation(null);
   };
 
   return (
@@ -303,9 +339,24 @@ export function SlideEditor() {
           {/* All annotations use canvas coordinates (0...3000) */}
           {currentSlide.annotations.map((annotation) => {
             const isSelected = selectedAnnotation?.id === annotation.id;
-            // The rest of annotation rendering as before, but x/y/w/h are canvas-based
-            // ... (copy your rendering logic here, adapting position: annotation.x, annotation.y relative to canvas)
-            // ...
+            return (
+              <div
+                key={annotation.id}
+                data-annotation
+                style={{
+                  position: 'absolute',
+                  left: annotation.x,
+                  top: annotation.y,
+                  width: annotation.width,
+                  height: annotation.height,
+                  backgroundColor: isSelected ? 'rgba(255, 255, 0, 0.5)' : 'transparent',
+                }}
+              >
+                {/* Render annotation content based on type */}
+                {annotation.type === 'text' && <span>{annotation.content}</span>}
+                {/* Add other annotation types here */}
+              </div>
+            );
           })}
         </div>
         {selectedTool && (
