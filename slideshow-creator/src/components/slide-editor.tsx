@@ -23,6 +23,10 @@ export function SlideEditor() {
   const [selectedTool, setSelectedTool] = React.useState<AnnotationType | null>(null);
   const editorRef = React.useRef<HTMLDivElement>(null);
 
+  // Draft annotation (in-progress for drag-to-add)
+  const [draftAnnotation, setDraftAnnotation] = useState<Annotation|null>(null);
+  const [isDrafting, setIsDrafting] = useState(false);
+
   // Pan & zoom states
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -117,6 +121,25 @@ export function SlideEditor() {
     setIsDragging(false);
     setIsResizing(false);
     setResizeDirection('');
+    finalizeDraftAnnotation();
+  };
+
+  const finalizeDraftAnnotation = () => {
+    if (isDrafting && draftAnnotation && selectedTool) {
+      if (selectedTool === 'highlight') {
+        if (Math.abs(draftAnnotation.width) > 5 && Math.abs(draftAnnotation.height) > 5) {
+          addAnnotation('highlight', draftAnnotation.x, draftAnnotation.y, Math.abs(draftAnnotation.width), Math.abs(draftAnnotation.height));
+        }
+      } else if (selectedTool === 'arrow' && draftAnnotation.arrowPoints) {
+        const { x1, y1, x2, y2 } = draftAnnotation.arrowPoints;
+        if (Math.abs(x2 - x1) > 10 || Math.abs(y2 - y1) > 10) {
+          addAnnotation('arrow', x1, y1, Math.abs(x2-x1), Math.abs(y2-y1), 0, undefined, { x1, y1, x2, y2 });
+        }
+      }
+      setDraftAnnotation(null);
+      setIsDrafting(false);
+      setSelectedTool(null);
+    }
   };
 
   // Listen for key events to delete the selected annotation
@@ -182,7 +205,6 @@ export function SlideEditor() {
 
   const handleEditorClick = (e: React.MouseEvent) => {
     if (isPanning) return;
-    // Block clicks on annotation elements
     const target = e.target as HTMLElement;
     if (target.closest('[data-annotation]')) {
       const annotation = currentSlide.annotations.find(a => a.id === target.closest('[data-annotation]')?.getAttribute('data-id'));
@@ -191,21 +213,46 @@ export function SlideEditor() {
       }
       return;
     }
-    if (selectedTool) {
+    if (selectedTool && !isDrafting) {
       const pos = getCanvasPointerCoords(e);
-      // Only add if in slide area
       const minX = SLIDE_CENTER_X - SLIDE_W / 2;
       const minY = SLIDE_CENTER_Y - SLIDE_H / 2;
       const maxX = SLIDE_CENTER_X + SLIDE_W / 2;
       const maxY = SLIDE_CENTER_Y + SLIDE_H / 2;
-      if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
-        addAnnotation(selectedTool, pos.x, pos.y);
+      if (!(pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY)) return;
+      if (selectedTool === 'text') {
+        addAnnotation('text', pos.x, pos.y);
         setSelectedTool(null);
         window.dispatchEvent(new CustomEvent('annotation-added', { detail: { type: selectedTool } }));
+      } else if (selectedTool === 'highlight') {
+        setIsDrafting(true);
+        setDraftAnnotation({
+          id: 'draft', type: 'highlight', content: '', x: pos.x, y: pos.y, width: 1, height: 1, rotation: 0, color: '#ffd600',
+        } as any);
+      } else if (selectedTool === 'arrow') {
+        setIsDrafting(true);
+        setDraftAnnotation({
+          id: 'draft', type: 'arrow', content: '', x: pos.x, y: pos.y, width: 1, height: 1, rotation: 0, color: '#ffd600',
+          arrowPoints: { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y },
+        } as any);
       }
-    } else {
-      setSelectedAnnotation(null);
+      return;
     }
+    setSelectedAnnotation(null);
+  };
+
+  const handleEditorDrag = (e: React.MouseEvent) => {
+    if (isDrafting && draftAnnotation && selectedTool) {
+      const pos = getCanvasPointerCoords(e);
+      if (draftAnnotation.type === 'highlight') {
+        setDraftAnnotation({ ...draftAnnotation, width: pos.x - draftAnnotation.x, height: pos.y - draftAnnotation.y });
+      } else if (draftAnnotation.type === 'arrow' && draftAnnotation.arrowPoints) {
+        setDraftAnnotation({ ...draftAnnotation, arrowPoints: { ...draftAnnotation.arrowPoints, x2: pos.x, y2: pos.y } });
+      }
+      return;
+    }
+    // Existing handleMouseMove for selectedAnnotation drag/resize can go here...
+    // ...
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -283,7 +330,7 @@ export function SlideEditor() {
             transformOrigin: 'top left',
           }}
           onMouseDown={(e) => { handlePanStart(e); handleEditorClick(e); }}
-          onMouseMove={(e) => { handlePan(e); handleMouseMove(e); }}
+          onMouseMove={(e) => { handlePan(e); handleEditorDrag(e); }}
           onMouseUp={() => { handlePanEnd(); handleMouseUp(); }}
           onMouseLeave={() => { handlePanEnd(); handleMouseUp(); }}
         >
@@ -397,6 +444,39 @@ export function SlideEditor() {
               </div>
             );
           })}
+          {draftAnnotation && isDrafting && (draftAnnotation.type === 'highlight') && (
+            <div
+              key={draftAnnotation.id}
+              style={{
+                position: 'absolute',
+                left: draftAnnotation.x,
+                top: draftAnnotation.y,
+                width: draftAnnotation.width,
+                height: draftAnnotation.height,
+                background: '#ffd600',
+                opacity: 0.18, zIndex: 100,
+                border: '2px dashed #ebc000', borderRadius: 8
+              }}
+            />
+          )}
+          {draftAnnotation && isDrafting && draftAnnotation.type === 'arrow' && draftAnnotation.arrowPoints && (
+            <svg
+              key={draftAnnotation.id}
+              style={{position: 'absolute', left: 0, top: 0, width: CANVAS_SIZE, height: CANVAS_SIZE, pointerEvents: 'none', zIndex: 99}}
+            >
+              <defs>
+                <marker id={`arrowhead-draft`} markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#ffd600" /></marker>
+              </defs>
+              <line
+                x1={draftAnnotation.arrowPoints.x1} y1={draftAnnotation.arrowPoints.y1}
+                x2={draftAnnotation.arrowPoints.x2} y2={draftAnnotation.arrowPoints.y2}
+                stroke="#ffd600"
+                strokeWidth={4}
+                markerEnd={`url(#arrowhead-draft)`}
+                strokeDasharray="7"
+              />
+            </svg>
+          )}
         </div>
         {selectedTool && (
           <div className="absolute top-4 left-4 bg-black bg-opacity-75 text-white px-3 py-1 rounded text-sm select-none pointer-events-none z-30">
